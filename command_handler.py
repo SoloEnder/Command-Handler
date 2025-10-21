@@ -1,5 +1,5 @@
 import logging
-from exceptions import CommandNotFoundError, WrongArgTypeError, ArgumentsCountError
+from .exceptions import CommandNotFoundError, WrongArgTypeError, ArgumentsCountError
 
 logging.basicConfig(level=10)
 
@@ -20,7 +20,7 @@ class Command:
     def __init__(self, command_name: str, command_func, **kw):
         self.command_name = command_name
         self.command_func = command_func
-        self.command_args = kw
+        self.command_args = kw["kw"] if kw.get("kw") else kw
 
     def exec_command(self, given_args):
         self.command_func(given_args)
@@ -43,6 +43,7 @@ class CommandHandler:
 
     
     def add_command(self, command_name: str, command_func, **kw):
+        blacklisted_type = (str, int, float, dict, list, tuple, set, bool)
         """
         Create a new Command() object
 
@@ -52,6 +53,9 @@ class CommandHandler:
             - kw (keyword): the args need for the command => arg_name='arg_type'
                 - argument_types = 'str'=>string, 'int'=>integer, 'true'=>True, 'false'=>False, 'none'=>None
         """
+        if type(command_func) in blacklisted_type or type(command_name) != str:
+            raise TypeError("Invalid argument for 'command_name' or 'command_func'")
+        
         command = Command(command_name, command_func, kw=kw)
         self.commands.append(command)
         logging.debug(f"Command_adder: Command named '{command_name}' associeted with '{command_func}' added\n")
@@ -83,6 +87,9 @@ class CommandHandler:
         Returns:
             - bool: False if the given_name not found
             - command object: the object of the command (class) if the command found
+
+        Raises:
+            - CommandNotFoundError: if the command is not found
         """
 
         for command in self.commands:
@@ -102,16 +109,18 @@ class CommandHandler:
 
         Returns:
             - bool: True if the argument number match, False otherwise
+
+        Raises:
+            - ArgumentCountError: if the number of given arguments don't match with the number of arguments need by the command
         """
 
-        if len(given_args) == len(command_args["kw"]):
+        if len(given_args) == len(command_args):
             return True
         
         else:
             raise ArgumentsCountError(command_args)
         
     def convert_given_args(self, command_args: dict, given_args_list: list) -> dict:
-        command_args = command_args["kw"]
         """
         Convert the given args into the type need by the command function
 
@@ -121,6 +130,9 @@ class CommandHandler:
 
         Returns:
             - dict: the command arguments name in keys, and the converted given arguments in value
+
+        Raises:
+            - WrongArgsTypeError: if the given arguments have not the exceped type
         """
         args_type = {
             "str":str,
@@ -135,21 +147,23 @@ class CommandHandler:
             index += 1
             given_arg = given_args_list[index]
 
-            if given_arg.startswith("'") and given_arg.endswith("'"):
-                given_arg.replace("'", "")
-                given_args_dict[arg_name] = given_arg
-                continue
+            if type(given_arg) == str:
 
-            if given_arg.startswith('"') and given_arg.endswith('"'):
-                given_arg.replace('"', '')
-                given_args_dict[arg_name] = given_arg
-                continue
-            
-            type_exception = ["true", "false", "none"]
+                if given_arg.startswith("'") and given_arg.endswith("'"):
+                    given_arg = given_arg.replace("'", "")
+                    given_args_dict[arg_name] = given_arg
+                    continue
+
+                if given_arg.startswith('"') and given_arg.endswith('"'):
+                    given_arg.replace('"', '')
+                    given_args_dict[arg_name] = given_arg
+                    continue
+                
+            type_exception = ["true", "false", "none", "True", "False", "None"]
 
             try:
 
-                if given_arg.lower() not in type_exception:
+                if given_arg not in type_exception:
                     given_arg = args_type[excepted_type](given_arg)
 
                 else:
