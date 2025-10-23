@@ -23,7 +23,7 @@ class Command:
         self.command_args = kw["kw"] if kw.get("kw") else kw
 
     def exec_command(self, given_args):
-        self.command_func(given_args)
+        self.command_func(**given_args)
 
 class CommandHandler:
     """
@@ -40,6 +40,10 @@ class CommandHandler:
 
     def __init__(self):
         self.commands = []
+
+    def config(self, **kw):
+        backupfile_path = kw.get("backupfile_path", False)
+        logfile_path = kw.get("logfile_path", False)
 
     
     def add_command(self, command_name: str, command_func, **kw):
