@@ -1,192 +1,210 @@
+
+from typing import Literal
 import logging
-from .exceptions import CommandNotFoundError, WrongArgTypeError, ArgumentsCountError
+import dill
+import exceptions
+from command import Command
+from command_call_handler import CommandCallHandler
 
-logging.basicConfig(level=10)
 
-class Command:
-    """
-    The model for the command object used by the CommandHandler
-
-    Attribute:
-        - command_name (str): the name of the command (given in the __init__)
-        - command_args (keyword): the args need for the command => arg_name='arg_type'
-            - argument_types = 'str'=>string, 'int'=>integer, 'true'=>True, 'false'=>False, 'none'=>None
-        - command_func (func object): the associeted function
-
-    Methods:
-        - exec_command: call the associeted command (by the attribute 'func')
-    """
-
-    def __init__(self, command_name: str, command_func, **kw):
-        self.command_name = command_name
-        self.command_func = command_func
-        self.command_args = kw["kw"] if kw.get("kw") else kw
-
-    def exec_command(self, given_args):
-        self.command_func(**given_args)
+logging.basicConfig(level=logging.DEBUG, format="[{asctime}] - [{name}] - [{levelname}] : {msg}", style="{")
 
 class CommandHandler:
-    """
-    A command handler
 
-    Attributes:
-        - commands (list): a list of Command() objects, représent the available commands
+    def __init__(self, commands: list|None=None):
+        self.commands = commands if commands else []
+        self.commands_calls_history = []
+        self.commands_calls_handlers = []
 
-    Methods:
-        - add_command: method for add a new command to the list of commands
-        - exec_command: execute the command
-        - find_command: check if a command exist in the command database (list commmands)
-    """
-
-    def __init__(self):
-        self.commands = []
-
-    def config(self, **kw):
-        backupfile_path = kw.get("backupfile_path", False)
-        logfile_path = kw.get("logfile_path", False)
-
-    
-    def add_command(self, command_name: str, command_func, **kw):
-        blacklisted_type = (str, int, float, dict, list, tuple, set, bool)
+    def add_command(self, name: str, func, *args):
         """
-        Create a new Command() object
+        Create a command and add it to the command list
 
         Args:
-            - command_name (str): the name for the new command
-            - command_func (function object): the function associated to the new command
-            - kw (keyword): the args need for the command => arg_name='arg_type'
-                - argument_types = 'str'=>string, 'int'=>integer, 'true'=>True, 'false'=>False, 'none'=>None
-        """
-        if type(command_func) in blacklisted_type or type(command_name) != str:
-            raise TypeError("Invalid argument for 'command_name' or 'command_func'")
-        
-        command = Command(command_name, command_func, kw=kw)
-        self.commands.append(command)
-        logging.debug(f"Command_adder: Command named '{command_name}' associeted with '{command_func}' added\n")
-
-    def exec_command(self, given_name: str, given_args: list):
-        """
-        Find and execute a command
-
-        Args:
-            - given_name (str): the name of the requested command
-
-        Raise:
-            - CommandNotFoundError : if there is no match for the requested command in the commands list
-
-        """
-        command_found = self.find_command(given_name)
-        command_args = command_found.command_args
-        self.check_args_len(command_args, given_args)
-        converted_args = self.convert_given_args(command_args, given_args)
-        command_found.exec_command(converted_args)
-
-    def find_command(self, given_name: str):
-        """
-        Search the command name in the command database
-
-        Args:
-            - given_name (str): the name of the searched command
-
-        Returns:
-            - bool: False if the given_name not found
-            - command object: the object of the command (class) if the command found
-
-        Raises:
-            - CommandNotFoundError: if the command is not found
+            - name (str): the name of the command (used for call it)
+            - func: the function attached to the command (executed at every call of the command name)
+            - args (tuple): the name of the arguments supported by the command function
         """
 
-        for command in self.commands:
-
-            if command.command_name == given_name:
-                return command
-            
-        raise CommandNotFoundError(given_name)
-    
-    def check_args_len(self, command_args: dict, given_args: list) -> bool:
-        """
-        Check if the given number argument match with the need argument number
-
-        Args:
-            - command_args (dict): the arguments need by the command
-            - given_args (list): the arguments given by the user
-
-        Returns:
-            - bool: True if the argument number match, False otherwise
-
-        Raises:
-            - ArgumentCountError: if the number of given arguments don't match with the number of arguments need by the command
-        """
-
-        if len(given_args) == len(command_args):
-            return True
+        if self.command_exists(name):
+            raise exceptions.CommandExists(name)
         
         else:
-            raise ArgumentsCountError(command_args)
-        
-    def convert_given_args(self, command_args: dict, given_args_list: list) -> dict:
+            command_object = Command(name, func, *args)
+            self.commands.append(command_object)
+            logging.info("A command has been added")
+            logging.debug(f"{name=}, {func=}, {args=}")
+
+    def delete_command(self, name: str|None=None, index: int|None=None):
         """
-        Convert the given args into the type need by the command function
+        Delete a command object from the command list
 
         Args:
-            - command_args (dict): the needed type of arguments
-            - given_args (list): the argument given by the user
-
-        Returns:
-            - dict: the command arguments name in keys, and the converted given arguments in value
+            - name (str) : the name of the command to delete
+            - index (int): the index of the command to delete
 
         Raises:
-            - WrongArgsTypeError: if the given arguments have not the exceped type
+            - CommandNotFound : if no command is found for the given name/index
         """
-        args_type = {
-            "str":str,
-            "int":int,
-            "float":float,
-            }
-        index = -1
 
-        given_args_dict = {}
+        if name:
+            command_index = self.command_exists(name, get_index=True)
 
-        for arg_name, excepted_type in command_args.items():
-            index += 1
-            given_arg = given_args_list[index]
-
-            if type(given_arg) == str:
-
-                if given_arg.startswith("'") and given_arg.endswith("'"):
-                    given_arg = given_arg.replace("'", "")
-                    given_args_dict[arg_name] = given_arg
-                    continue
-
-                if given_arg.startswith('"') and given_arg.endswith('"'):
-                    given_arg.replace('"', '')
-                    given_args_dict[arg_name] = given_arg
-                    continue
-                
-            type_exception = ["true", "false", "none", "True", "False", "None"]
-
-            try:
-
-                if given_arg not in type_exception:
-                    given_arg = args_type[excepted_type](given_arg)
-
-                else:
-                    given_arg = given_arg.lower()
-
-                    if given_arg == "true":
-                        given_arg = True
-
-                    elif given_arg == "false":
-                        given_arg = False
-
-                    elif given_arg == "none":
-                        given_arg = None
-
-            except ValueError:
-
-                raise WrongArgTypeError(given_arg, excepted_type)
+            if command_index or type(command_index) == int:
+                del self.commands[command_index]
 
             else:
-                given_args_dict[arg_name] = given_arg
+                raise exceptions.CommandNotFound(name=name)
+        
+        elif type(index) == int:
 
-        return given_args_dict
+            try:
+                del self.commands[index]
+                print("deleted")
+
+            except IndexError:
+                raise exceptions.CommandNotFound(index=index)
+            
+    def edit_command(self, command_name:str|None=None, index: int|None=None, **kwargs):
+        """
+        Edit the attributes 'name', 'func' and 'args' of a Command instance
+
+        Args:
+            - name (str) : the name of the command to edit
+            - index (str): the index of the command to edit
+            - kwargs (kwargs): the new value to set to the Command instance attributes
+                - name (str): the new value of the attribue 'name'
+                - func (function object): the new value for the attribue 'func'
+                - args (tuple): the new value for the attribute 'args'
+
+        Raises:
+            - CommandNotFound : if no command is found for the given name/index
+
+        """
+
+        if command_name:
+            command_object = self.get_command(command_name)
+
+        elif index or index == 0:
+
+            try:
+                command_object = self.commands[index]
+
+            except IndexError:
+                raise exceptions.CommandNotFound(index=index)
+
+        command_object.name = kwargs.get("name", command_object.name)
+        command_object.func = kwargs.get("func", command_object.func)
+        command_object.args = kwargs.get("args", command_object.args)
+
+    def exec_command(self, command_name, check_args=True, **kwargs):
+        logging.debug(f"{command_name=}")
+        command_object = self.get_command(command_name)
+        cmd_call_hander = None
+
+        for cmd_call_hander in self.commands_calls_handlers:
+
+            if cmd_call_hander.command_call == command_name:
+                logging.info(f"A command call handler has been found for the command '{command_name}'")
+
+                if cmd_call_hander.moment == "before":
+                    cmd_call_hander.func()
+
+
+        if self.check_args(kwargs.keys(), command_object.args):
+            self.commands_calls_history.append(command_object.name)
+            logging.debug(f"Function {command_object.func} associated with command {command_object.name} called")
+            logging.info(f"Command '{command_object.name} called !'")
+            command_object.func(**kwargs)
+
+            if cmd_call_hander and cmd_call_hander.moment == "after":
+                cmd_call_hander.func()
+
+
+    def check_args(self, given_args, cmd_args: tuple):
+        """
+        Check if the keywords arguments given to a command are accepted by the command
+
+        Args:
+            given_args: the keywords arguments given to the command
+            cmd_args (tuple): the keywords arguments accepted by the command
+
+        Returns:
+            True: if the given arguments match with the arguments accepted by the command
+
+        Raises:
+            - UnknownArgument : if an argument not handled by the command function
+        """
+
+        for given_arg in given_args:
+
+            if not given_arg in cmd_args:
+                raise exceptions.UnknownArgument(given_arg)
+
+        return True
+    
+    def command_exists(self, name, get_index: bool=False):
+        """
+        Check if a given command name exists in the command list of the current handler
+
+        Args:
+            given_name (str): the given name
+            get_index (bool): if setted to True, the function will return the index of the command found in the command list 
+
+        Returns:
+            True: if a command with this name exists
+            False: if no command with this name is found
+            Int: if get_index set to True
+ 
+        """
+
+        for index, cmd in enumerate(self.commands):
+
+            if cmd.name == name:
+
+                if get_index:
+                    return index
+                
+                else:
+                    return True
+
+        else:
+            return False
+        
+    def get_command(self, name: str):
+        """
+        Get and return a command object from the commands object list
+
+        Args:
+            - name (str): the name of the wanted command
+
+        Returns:
+            - command_object: the command object
+
+        Raises:
+            - CommandNotFound : if no command is found for the given name
+        """
+        command_index = self.command_exists(name, get_index=True)
+        logging.debug(f"{command_index=}")
+
+        if not command_index and not type(command_index) == int:
+            raise exceptions.CommandNotFound(name=name)
+        
+        else:
+            return self.commands[command_index]
+        
+    def add_call_handler(self, cmd_call_handler):
+        logging.info("A new command calls handler has been added")
+        self.commands_calls_handlers.append(cmd_call_handler)
+
+def say(**kwargs):
+    print(kwargs.get("text", "hello !"))
+
+def on_say():
+    print("Something has been say")
+
+on_say_handler = CommandCallHandler(command_call="say", func=on_say, moment="after")
+cmd_h = CommandHandler()
+cmd_h.add_command("say", say, "text")
+cmd_h.add_call_handler(on_say_handler)
+cmd_h.exec_command("say")

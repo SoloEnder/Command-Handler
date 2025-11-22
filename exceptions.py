@@ -1,28 +1,35 @@
 
-class CommandNotFoundError(Exception):
+class UnknownArgument(ValueError):
 
-    def __init__(self, command_name):
-        self.command_name = command_name
+    def __init__(self, arg):
         super().__init__()
+        self.arg = arg
 
     def __str__(self):
-        return f"Command '{self.command_name}' not found'"
+        return f"Unknown keyword argument '{self.arg}'"
     
-class WrongArgTypeError(TypeError):
+class CommandExists(ValueError):
 
-    def __init__(self, gave_arg, excepted_arg_type):
+    def __init__(self, name):
         super().__init__()
-        self.gave_arg = gave_arg
-        self.excepted_arg_type = excepted_arg_type
+        self.name = name
 
     def __str__(self):
-        return f"Gave argument '{self.gave_arg}' has not the excepted type '{self.excepted_arg_type}' "
+        return f"A command with the name '{self.name}' already exists in this handler"
+    
+class CommandNotFound(ValueError):
 
-class ArgumentsCountError(TypeError):
-
-    def __init__(self, excepted_args):
+    def __init__(self, name: str|None=None, index: int|None=None):
         super().__init__()
-        self.excepted_args = excepted_args
+        self.name = name
+        self.index = index
+
 
     def __str__(self):
-        return f"Arguments missing or too many : {[(f"<{excepted_arg}>") for excepted_arg in self.excepted_args["kw"].keys()]}"
+
+        if self.name:
+            return f"Unknown command name '{self.name}'"
+        
+        elif self.index or type(self.index) == int:
+            return f"No command found in the command list of this hanlder at the given index '{self.index}'"
+
